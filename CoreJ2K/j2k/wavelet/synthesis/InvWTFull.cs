@@ -35,6 +35,8 @@
 * 
 * Copyright (c) 1999/2000 JJ2000 Partners.
 * */
+// Modified 2026 by Legion Builds: the reconstruction buffer has the size of the level returned and starts from zero.
+// Copyright (c) 2026 Legion Builds
 using CoreJ2K.j2k.decoder;
 using CoreJ2K.j2k.image;
 using System;
@@ -327,6 +329,9 @@ namespace CoreJ2K.j2k.wavelet.synthesis
                         try
                         {
                             var rent = ArrayPool<float>.Shared.Rent((int)fBufferSize);
+                            // Rent() may hand back a buffer holding an earlier decode's samples, and a code-block that
+                            // carries no data never writes its area, so start from zero.
+                            Array.Clear(rent, 0, (int)fBufferSize);
                             reconstructedComps[compIndex].Data = rent;
                             rentedFloatBuffers[compIndex] = rent;
                         }
@@ -370,6 +375,7 @@ namespace CoreJ2K.j2k.wavelet.synthesis
                         try
                         {
                             var irent = ArrayPool<int>.Shared.Rent((int)iBufferSize);
+                            Array.Clear(irent, 0, (int)iBufferSize);
                             reconstructedComps[compIndex].Data = irent;
                             rentedIntBuffers[compIndex] = irent;
                         }

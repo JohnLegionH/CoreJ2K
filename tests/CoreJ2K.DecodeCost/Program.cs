@@ -32,6 +32,12 @@ if (o.ContainsKey("synthetic"))
     sets.Add(("syn-1024-rgb-19layer-tiles512", DecodeCost.MakeCodestream(1024, 1024, 3, 18, tileSize: 512)));
     sets.Add(("syn-1024-rgb-default", DecodeCost.MakeCodestream(1024, 1024, 3, -1)));
     sets.Add(("syn-1024-rgba-default", DecodeCost.MakeCodestream(1024, 1024, 4, -1)));
+    if (o.ContainsKey("big"))
+    {
+        sets.Add(("syn-2048-rgb-19layer", DecodeCost.MakeCodestream(2048, 2048, 3, 18)));
+        sets.Add(("syn-512-rgb-19layer", DecodeCost.MakeCodestream(512, 512, 3, 18)));
+        sets.Add(("syn-4096-rgb-3layer", DecodeCost.MakeCodestream(4096, 4096, 3, 2)));
+    }
     sets.Add(("syn-1024-rgba5-19layer", DecodeCost.MakeCodestream(1024, 1024, 5, 18)));
 }
 

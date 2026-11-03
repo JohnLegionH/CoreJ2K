@@ -31,6 +31,8 @@
 * 
 * Copyright (c) 1999/2000 JJ2000 Partners.
 * */
+// Modified 2026 by Legion Builds: counts the decoding work done (DecodeWork).
+// Copyright (c) 2026 Legion Builds
 using CoreJ2K.j2k.decoder;
 using CoreJ2K.j2k.image;
 using CoreJ2K.j2k.util;

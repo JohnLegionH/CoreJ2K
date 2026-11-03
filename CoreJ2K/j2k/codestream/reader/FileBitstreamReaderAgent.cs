@@ -31,6 +31,8 @@
 * 
 * Copyright (c) 1999/2000 JJ2000 Partners.
 * */
+// Modified 2026 by Legion Builds: a layer limit of n keeps n layers.
+// Copyright (c) 2026 Legion Builds
 using CoreJ2K.j2k.decoder;
 using CoreJ2K.j2k.entropy;
 using CoreJ2K.j2k.entropy.decoder;
@@ -2723,9 +2725,10 @@ namespace CoreJ2K.j2k.codestream.reader
 
             // If the l quit condition is used, Make sure that no layer 
             // after lquit is returned
-            if (lQuit != -1 && fl + nl > lQuit)
+            // (layers are numbered from 1: the layers fl .. fl+nl-1 are returned, and a limit of n keeps n of them)
+            if (lQuit != -1 && fl + nl - 1 > lQuit)
             {
-                nl = lQuit - fl;
+                nl = Math.Max(0, lQuit - fl + 1);
             }
 
             // Check validity of resquested resolution level (according to the

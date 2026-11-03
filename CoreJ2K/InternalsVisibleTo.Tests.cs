@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Legion Builds
+
 using System.Runtime.CompilerServices;
 
 // Expose internals to test assemblies

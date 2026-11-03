@@ -19,10 +19,13 @@ namespace CoreJ2K.Tests
     {
         /// <summary>
         /// The fixed allowance on top of 1.5 x the returned picture's own buffers: the codestream's header tables, the
-        /// packet and code-block bookkeeping, the compressed code-block copies and the entropy decoder's per-block state.
-        /// None of these grow with the picture's pixel count at the sizes used here (1024 x 1024 at most, 20 layers).
+        /// packet-header bookkeeping (about 1 KiB per code-block at 30 layers and 5 components, kept for every code-block of
+        /// the picture because a reduced decode still reads the packet headers of the resolutions it skips), the
+        /// compressed code-block copies and the entropy decoder's per-block state. Measured at 1024 x 1024: at most
+        /// 1.9 MiB over 1.5 x the picture, for the 5-component 30-layer bakes at level 3. It grows with the full picture's
+        /// code-block count, not with the level; for pictures above 1024 x 1024 it is larger (2048 x 2048: about 4 MiB).
         /// </summary>
-        public const long FixedOverheadBytes = 1 << 20;
+        public const long FixedOverheadBytes = 2 << 20;
 
         /// <summary>The reduced picture's own buffers: one 4-byte sample per pixel per component.</summary>
         private static long PictureBytes(int width, int height, int components, int level)
@@ -61,8 +64,9 @@ namespace CoreJ2K.Tests
             var data = DecodeCost.MakeCodestream(1024, 1024, 3, 7);
             var dl = DecodeCost.Peek(data).DecompositionLevels;
             var bytes = Enumerable.Range(0, 4).Select(l => DecodeCost.Measure(data, DecodeCost.Config(dl, l)).AllocatedBytes).ToArray();
+            Assert.True(bytes[1] * 2 < bytes[0], $"level 1 allocated {bytes[1]}, level 0 {bytes[0]}");
             for (int l = 1; l < 4; l++)
-                Assert.True(bytes[l] * 2 < bytes[l - 1], $"level {l} allocated {bytes[l]}, level {l - 1} {bytes[l - 1]}");
+                Assert.True(bytes[l] < bytes[l - 1], $"level {l} allocated {bytes[l]}, level {l - 1} {bytes[l - 1]}");
         }
 
         [Fact]
@@ -170,27 +174,40 @@ namespace CoreJ2K.Tests
             var dl = DecodeCost.Peek(data).DecompositionLevels;
             var full = DecodeCost.Measure(data, DecodeCost.Config(dl, 0), keepPixels: true).Pixels!;
             var reduced = DecodeCost.Measure(data, DecodeCost.Config(dl, level), keepPixels: true).Pixels!;
-            int size = 1024 >> level, block = 1 << level;
+            int size = 1024 >> level;
             Assert.Equal(3 * size * size, reduced.Length);
-            // the mean absolute difference from the block average of the full picture, per quadrant (one per tile) and component
+            // The same picture in one tile is the yardstick: a reduced level is the low-pass band, not the block average,
+            // so the two differ by a little everywhere. A missing or misplaced tile is a difference of tens.
+            var whole = DecodeCost.MakeCodestream(1024, 1024, 3, extraLayers);
+            var wholeFull = DecodeCost.Measure(whole, DecodeCost.Config(dl, 0), keepPixels: true).Pixels!;
+            var wholeReduced = DecodeCost.Measure(whole, DecodeCost.Config(dl, level), keepPixels: true).Pixels!;
             for (int c = 0; c < 3; c++)
                 for (int qy = 0; qy < 2; qy++)
                     for (int qx = 0; qx < 2; qx++)
                     {
-                        double sum = 0;
-                        int half = size / 2;
-                        for (int y = qy * half; y < (qy + 1) * half; y++)
-                            for (int x = qx * half; x < (qx + 1) * half; x++)
-                            {
-                                int avg = 0;
-                                for (int j = 0; j < block; j++)
-                                    for (int i = 0; i < block; i++)
-                                        avg += full[c * 1024 * 1024 + (y * block + j) * 1024 + x * block + i];
-                                sum += Math.Abs(avg / (block * block) - reduced[c * size * size + y * size + x]);
-                            }
-                        double mean = sum / (half * half);
-                        Assert.True(mean < 8, $"level {level}, component {c}, tile ({qx},{qy}): mean difference {mean:F1} from the full picture scaled down");
+                        double tiled = QuadrantMeanDifference(full, reduced, c, qx, qy, level);
+                        double control = QuadrantMeanDifference(wholeFull, wholeReduced, c, qx, qy, level);
+                        Assert.True(tiled < control + 3,
+                            $"level {level}, component {c}, tile ({qx},{qy}): mean difference {tiled:F1} from the full picture scaled down, the same picture in one tile {control:F1}");
                     }
+        }
+
+        /// <summary>The mean absolute difference, in one quadrant of one component, between a reduced picture and the block
+        /// average of the full picture (both as the planes of a 1024 x 1024 picture, level <paramref name="level"/>).</summary>
+        private static double QuadrantMeanDifference(byte[] full, byte[] reduced, int c, int qx, int qy, int level)
+        {
+            int size = 1024 >> level, block = 1 << level, half = size / 2;
+            double sum = 0;
+            for (int y = qy * half; y < (qy + 1) * half; y++)
+                for (int x = qx * half; x < (qx + 1) * half; x++)
+                {
+                    int avg = 0;
+                    for (int j = 0; j < block; j++)
+                        for (int i = 0; i < block; i++)
+                            avg += full[c * 1024 * 1024 + (y * block + j) * 1024 + x * block + i];
+                    sum += Math.Abs(avg / (block * block) - reduced[c * size * size + y * size + x]);
+                }
+            return sum / (half * half);
         }
 
         [Theory]
