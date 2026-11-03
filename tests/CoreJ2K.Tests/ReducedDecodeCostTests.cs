@@ -142,6 +142,34 @@ namespace CoreJ2K.Tests
         /// and placed as at full resolution, so the tiles after the first fell outside the reduced picture and its pixels
         /// there were whatever the output buffer held; the layer count only changed how often that showed.)
         /// </summary>
+        /// <summary>
+        /// A reduced preview is often made from the start of a codestream (a partial fetch). The code-blocks the start
+        /// lacks write nothing, so what shows there must not be what an earlier decode left in the reused buffers.
+        /// </summary>
+        [Theory]
+        [InlineData(0, 0, 2, 3)]
+        [InlineData(18, 0, 2, 3)]
+        [InlineData(18, 512, 1, 3)]
+        [InlineData(18, 512, 3, 3)]
+        [InlineData(0, 0, 3, 40)]
+        [InlineData(18, 0, 3, 40)]
+        [InlineData(18, 0, 3, 150)]
+        [InlineData(18, 0, 2, 100)]
+        [InlineData(0, 0, 3, 100)]
+        public void A_truncated_codestream_decodes_the_same_at_a_reduced_level_every_time(int extraLayers, int tileSize, int level, int keepOneIn)
+        {
+            var whole = DecodeCost.MakeCodestream(1024, 1024, 3, extraLayers, tileSize: tileSize);
+            var data = whole[..(whole.Length / keepOneIn)];
+            var noise = DecodeCost.MakeCodestream(512, 512, 3, 0, seed: 99);
+            var cfg = DecodeCost.Config(DecodeCost.Peek(whole).DecompositionLevels, level);
+            var first = DecodeCost.Measure(data, cfg, keepPixels: true).Pixels;
+            for (int i = 0; i < 3; i++)
+            {
+                DecodeCost.Measure(noise, DecodeCost.Config(DecodeCost.Peek(noise).DecompositionLevels, 0));
+                Assert.Equal(first, DecodeCost.Measure(data, cfg, keepPixels: true).Pixels);
+            }
+        }
+
         [Theory]
         [InlineData(0, 1)]
         [InlineData(0, 2)]
