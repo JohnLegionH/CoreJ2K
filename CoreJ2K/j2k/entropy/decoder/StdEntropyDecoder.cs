@@ -676,6 +676,8 @@ namespace CoreJ2K.j2k.entropy.decoder
                 npasses = mQuit * 3 - 2;
             }
 
+            DecodeWork.Add(npasses, srcblk.dl);
+
             // First bit-plane has only the cleanup pass
             if (curbp >= 0 && npasses > 0)
             {
