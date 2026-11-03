@@ -7,7 +7,7 @@ using System.Linq;
 using CoreJ2K.Tests;
 
 // Decode-cost probe. Usage:
-//   CoreJ2K.DecodeCost [--dir DIR] [--synthetic] [--levels N] [--layers a,b,c] [--check]
+//   CoreJ2K.DecodeCost [--dir DIR] [--synthetic] [--levels N] [--layers a,b,c] [--check] [--repeat]
 // DIR: raw codestreams or JP2 files (*.j2k, *.j2c, *.jp2). Each is decoded at discard levels 0..N (default 3) and,
 // at full resolution, with each layer limit given. One line per case (tab separated):
 //   CASE name WxH comps layers decomp level maxLayers outWxH alloc_bytes peak_heap_bytes ms pixel_hash code_blocks passes coded_bytes
@@ -28,7 +28,67 @@ if (o.ContainsKey("synthetic"))
     sets.Add(("syn-1024-rgb-1layer", DecodeCost.MakeCodestream(1024, 1024, 3, 0)));
     sets.Add(("syn-1024-rgb-8layer", DecodeCost.MakeCodestream(1024, 1024, 3, 7)));
     sets.Add(("syn-1024-rgb-19layer", DecodeCost.MakeCodestream(1024, 1024, 3, 18)));
+    sets.Add(("syn-1024-rgb-1layer-tiles512", DecodeCost.MakeCodestream(1024, 1024, 3, 0, tileSize: 512)));
+    sets.Add(("syn-1024-rgb-19layer-tiles512", DecodeCost.MakeCodestream(1024, 1024, 3, 18, tileSize: 512)));
+    sets.Add(("syn-1024-rgb-default", DecodeCost.MakeCodestream(1024, 1024, 3, -1)));
+    sets.Add(("syn-1024-rgba-default", DecodeCost.MakeCodestream(1024, 1024, 4, -1)));
     sets.Add(("syn-1024-rgba5-19layer", DecodeCost.MakeCodestream(1024, 1024, 5, 18)));
+}
+
+if (o.ContainsKey("stress"))
+{
+    // Decodes of the same files at reduced levels, 8 threads at once, each result compared with a single-threaded
+    // reference. One line: STRESS decodes N different D
+    int threads = 8, rounds = 4, n = 0, bad = 0;
+    var jobs = sets.SelectMany(s => Enumerable.Range(1, Math.Min(maxLevel, DecodeCost.Peek(s.Data).DecompositionLevels))
+        .Select(l => (s.Name, s.Data, Level: l))).ToList();
+    string Hash(byte[] d, int dl, int l)
+    {
+        using var img = CoreJ2K.J2kImage.FromBytes(d, DecodeCost.Config(dl, l));
+        var parts = new List<byte>();
+        for (int c = 0; c < img.NumberOfComponents; c++) parts.AddRange(img.GetComponentBytes(c));
+        return DecodeCost.PixelHash(parts.ToArray());
+    }
+    var reference = jobs.ToDictionary(j => (j.Name, j.Level), j => Hash(j.Data, DecodeCost.Peek(j.Data).DecompositionLevels, j.Level));
+    var lockObj = new object();
+    Parallel.For(0, threads, new ParallelOptions { MaxDegreeOfParallelism = threads }, t =>
+    {
+        for (int r = 0; r < rounds; r++)
+            foreach (var j in jobs.Skip(t).Concat(jobs.Take(t)))
+            {
+                var h = Hash(j.Data, DecodeCost.Peek(j.Data).DecompositionLevels, j.Level);
+                lock (lockObj) { n++; if (h != reference[(j.Name, j.Level)]) { bad++; Console.Out.WriteLine($"STRESS-DIFF	{j.Name}	level {j.Level}"); } }
+            }
+    });
+    Console.Out.WriteLine($"STRESS	decodes {n}	different {bad}");
+    return;
+}
+
+if (o.ContainsKey("repeat"))
+{
+    // Repeatability: each reduced level decoded, then again after a full-resolution decode of another file has
+    // used (and left dirty) the library's reusable buffers. One line per file and level:
+    //   REPEAT name WxH layers level same|DIFFERENT
+    var dirty = sets.Count > 1 ? sets : new() { ("dirt", DecodeCost.MakeCodestream(1024, 1024, 3, 0, seed: 5)) };
+    int di = 0, differ = 0, total = 0;
+    foreach (var (name, data) in sets)
+    {
+        var h = DecodeCost.Peek(data);
+        for (int level = 1; level <= Math.Min(maxLevel, h.DecompositionLevels); level++)
+        {
+            var cfg = DecodeCost.Config(h.DecompositionLevels, level);
+            var a = DecodeCost.Measure(data, cfg, true).Pixels!;
+            var (_, other) = dirty[di++ % dirty.Count];
+            DecodeCost.Measure(other, DecodeCost.Config(DecodeCost.Peek(other).DecompositionLevels, 0));
+            var b = DecodeCost.Measure(data, cfg, true).Pixels!;
+            total++;
+            bool same = a.AsSpan().SequenceEqual(b);
+            if (!same) differ++;
+            Console.Out.WriteLine($"REPEAT	{name}	{h.Width}x{h.Height}	{h.Layers}	{level}	{(same ? "same" : "DIFFERENT")}");
+        }
+    }
+    Console.Out.WriteLine($"REPEAT-SUMMARY	cases {total}	different {differ}");
+    return;
 }
 
 foreach (var (name, data) in sets)

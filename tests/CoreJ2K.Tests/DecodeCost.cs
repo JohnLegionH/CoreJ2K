@@ -59,9 +59,10 @@ namespace CoreJ2K.Tests
         /// <summary>
         /// A deterministic 8-bit test codestream: smooth gradients plus pseudo-random detail, so every resolution level
         /// has content. <paramref name="extraLayers"/> adds that many unoptimised layers after the first
-        /// (the layer count declared is then <c>1 + extraLayers</c>).
+        /// (the layer count declared is then <c>1 + extraLayers</c>); a negative value leaves the encoder's own default layers and rate.
+        /// <paramref name="tileSize"/> above 0 cuts the picture into square tiles of that size.
         /// </summary>
-        public static byte[] MakeCodestream(int width, int height, int components, int extraLayers, int seed = 1)
+        public static byte[] MakeCodestream(int width, int height, int components, int extraLayers, int seed = 1, int tileSize = 0)
         {
             var data = new int[components][];
             var rng = new Random(seed);
@@ -78,9 +79,13 @@ namespace CoreJ2K.Tests
             }
             var src = new InterleavedImageSource(width, height, components, 8, new bool[components], data);
             var pl = J2kImage.GetDefaultEncoderParameterList();
-            pl["file_format"] = "off";   // a raw codestream, as the grid's textures are
-            pl["rate"] = "2.0";
-            pl["Alayers"] = extraLayers > 0 ? $"0.05 +{extraLayers}" : "0.05";
+            pl["file_format"] = "off";
+            if (tileSize > 0) pl["tiles"] = $"{tileSize} {tileSize}";   // a raw codestream, as the grid's textures are
+            if (extraLayers >= 0)
+            {
+                pl["rate"] = "2.0";
+                pl["Alayers"] = extraLayers > 0 ? $"0.05 +{extraLayers}" : "0.05";
+            }
             return J2kImage.ToBytes(src, null, pl)!;
         }
 

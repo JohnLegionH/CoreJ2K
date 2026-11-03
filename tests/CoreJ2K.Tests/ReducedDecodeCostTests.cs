@@ -133,6 +133,79 @@ namespace CoreJ2K.Tests
         }
 
         /// <summary>
+        /// A picture cut into tiles decodes at a reduced level as the picture it is: the same pixels every time, even
+        /// after other decodes dirtied the reusable buffers, and every tile in place. (Each tile used to be sized
+        /// and placed as at full resolution, so the tiles after the first fell outside the reduced picture and its pixels
+        /// there were whatever the output buffer held; the layer count only changed how often that showed.)
+        /// </summary>
+        [Theory]
+        [InlineData(0, 1)]
+        [InlineData(0, 2)]
+        [InlineData(0, 3)]
+        [InlineData(18, 1)]
+        [InlineData(18, 2)]
+        [InlineData(18, 3)]
+        public void A_tiled_picture_decodes_the_same_at_a_reduced_level_every_time(int extraLayers, int level)
+        {
+            var data = DecodeCost.MakeCodestream(1024, 1024, 3, extraLayers, tileSize: 512);
+            var noise = DecodeCost.MakeCodestream(512, 512, 3, 0, seed: 99);
+            var cfg = DecodeCost.Config(DecodeCost.Peek(data).DecompositionLevels, level);
+            var first = DecodeCost.Measure(data, cfg, keepPixels: true).Pixels;
+            for (int i = 0; i < 3; i++)
+            {
+                DecodeCost.Measure(noise, DecodeCost.Config(DecodeCost.Peek(noise).DecompositionLevels, 0));
+                Assert.Equal(first, DecodeCost.Measure(data, cfg, keepPixels: true).Pixels);
+            }
+        }
+
+        [Theory]
+        [InlineData(0, 1)]
+        [InlineData(0, 2)]
+        [InlineData(0, 3)]
+        [InlineData(18, 1)]
+        [InlineData(18, 3)]
+        public void A_tiled_picture_at_a_reduced_level_is_the_full_picture_scaled_down_in_every_tile(int extraLayers, int level)
+        {
+            var data = DecodeCost.MakeCodestream(1024, 1024, 3, extraLayers, tileSize: 512);
+            var dl = DecodeCost.Peek(data).DecompositionLevels;
+            var full = DecodeCost.Measure(data, DecodeCost.Config(dl, 0), keepPixels: true).Pixels!;
+            var reduced = DecodeCost.Measure(data, DecodeCost.Config(dl, level), keepPixels: true).Pixels!;
+            int size = 1024 >> level, block = 1 << level;
+            Assert.Equal(3 * size * size, reduced.Length);
+            // the mean absolute difference from the block average of the full picture, per quadrant (one per tile) and component
+            for (int c = 0; c < 3; c++)
+                for (int qy = 0; qy < 2; qy++)
+                    for (int qx = 0; qx < 2; qx++)
+                    {
+                        double sum = 0;
+                        int half = size / 2;
+                        for (int y = qy * half; y < (qy + 1) * half; y++)
+                            for (int x = qx * half; x < (qx + 1) * half; x++)
+                            {
+                                int avg = 0;
+                                for (int j = 0; j < block; j++)
+                                    for (int i = 0; i < block; i++)
+                                        avg += full[c * 1024 * 1024 + (y * block + j) * 1024 + x * block + i];
+                                sum += Math.Abs(avg / (block * block) - reduced[c * size * size + y * size + x]);
+                            }
+                        double mean = sum / (half * half);
+                        Assert.True(mean < 8, $"level {level}, component {c}, tile ({qx},{qy}): mean difference {mean:F1} from the full picture scaled down");
+                    }
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void A_tiled_picture_at_a_level_allocates_for_the_picture_it_returns(int level)
+        {
+            var data = DecodeCost.MakeCodestream(1024, 1024, 3, 18, tileSize: 512);
+            var r = DecodeCost.Measure(data, DecodeCost.Config(DecodeCost.Peek(data).DecompositionLevels, level));
+            long budget = PictureBytes(1024, 1024, 3, level) * 3 / 2 + FixedOverheadBytes;
+            Assert.True(r.AllocatedBytes <= budget, $"level {level}: allocated {r.AllocatedBytes} bytes, budget {budget}");
+        }
+
+        /// <summary>
         /// Pixels the decoder gave before the allocation work (CoreJ2K 2.3.3.91, the commit it was built from), on the
         /// codestreams <see cref="DecodeCost.MakeCodestream"/> makes. Level 0 for every layer count; the reduced levels
         /// only for the few-layer stream, whose reduced decode was repeatable.
