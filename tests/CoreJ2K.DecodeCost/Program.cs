@@ -41,6 +41,39 @@ if (o.ContainsKey("synthetic"))
     sets.Add(("syn-1024-rgba5-19layer", DecodeCost.MakeCodestream(1024, 1024, 5, 18)));
 }
 
+if (o.ContainsKey("close"))
+{
+    // Correctness of the reduced levels: the mean absolute difference, per component, between a level and the block
+    // average of the full-resolution decode (a low-pass band differs from the block average by a little everywhere; a
+    // wrong or missing tile is tens). One line per file and level: CLOSE name WxH layers level mean_abs_diff
+    double worst = 0;
+    foreach (var (name, data) in sets)
+    {
+        var h = DecodeCost.Peek(data);
+        var full = DecodeCost.Measure(data, DecodeCost.Config(h.DecompositionLevels, 0), true).Pixels!;
+        for (int level = 1; level <= Math.Min(maxLevel, h.DecompositionLevels); level++)
+        {
+            var r = DecodeCost.Measure(data, DecodeCost.Config(h.DecompositionLevels, level), true);
+            int block = 1 << level, w = r.Width, hh = r.Height, comps = h.Components;
+            double sum = 0; long n = 0;
+            for (int c = 0; c < comps; c++)
+                for (int y = 0; y < hh; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int avg = 0, cnt = 0;
+                        for (int j = 0; j < block && y * block + j < h.Height; j++)
+                            for (int i = 0; i < block && x * block + i < h.Width; i++) { avg += full[c * h.Width * h.Height + (y * block + j) * h.Width + x * block + i]; cnt++; }
+                        sum += Math.Abs(avg / Math.Max(1, cnt) - r.Pixels![c * w * hh + y * w + x]); n++;
+                    }
+            double d = sum / n;
+            worst = Math.Max(worst, d);
+            Console.Out.WriteLine($"CLOSE\t{name}\t{h.Width}x{h.Height}\t{h.Layers}\t{level}\t{d:F2}");
+        }
+    }
+    Console.Out.WriteLine($"CLOSE-SUMMARY\tworst {worst:F2}");
+    return;
+}
+
 if (o.ContainsKey("stress"))
 {
     // Decodes of the same files at reduced levels, 8 threads at once, each result compared with a single-threaded
