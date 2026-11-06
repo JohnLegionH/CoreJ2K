@@ -31,6 +31,8 @@
 * 
 * Copyright (c) 1999/2000 JJ2000 Partners.
 * */
+// Modified 2026 by Legion Builds: a reduced-resolution decode is sized for the level it returns.
+// Copyright (c) 2026 Legion Builds
 using CoreJ2K.j2k.decoder;
 using CoreJ2K.j2k.image;
 using System;
@@ -329,12 +331,6 @@ namespace CoreJ2K.j2k.wavelet.synthesis
             return mressrc.GetTileCompWidth(t, c, rl);
         }
 
-        /// <summary>
-        /// The width in pixels of the specified tile-component at its highest resolution, whatever level is being reconstructed. The
-        /// reconstruction buffer is this wide, and holds a smaller reconstruction in its top-left corner.
-        /// </summary>
-        protected int GetFullTileCompWidth(int t, int c) => mressrc.GetTileCompWidth(t, c, mressrc.GetSynSubbandTree(t, c).resLvl);
-
         /// <summary> Returns the height in pixels of the specified tile-component.
         /// 
         /// This default implementation returns the value of the source at the
@@ -358,9 +354,6 @@ namespace CoreJ2K.j2k.wavelet.synthesis
             var rl = ReconstructedRes(mressrc.GetSynSubbandTree(t, c).resLvl);
             return mressrc.GetTileCompHeight(t, c, rl);
         }
-
-        /// <summary>The height in pixels of the specified tile-component at its highest resolution; see <see cref="GetFullTileCompWidth"/>.</summary>
-        protected int GetFullTileCompHeight(int t, int c) => mressrc.GetTileCompHeight(t, c, mressrc.GetSynSubbandTree(t, c).resLvl);
 
         /// <summary> Returns the width in pixels of the specified component in the overall
         /// image.

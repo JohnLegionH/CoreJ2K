@@ -35,6 +35,8 @@
 * 
 * Copyright (c) 1999/2000 JJ2000 Partners.
 * */
+// Modified 2026 by Legion Builds: the reconstruction buffer has the size of the level returned.
+// Copyright (c) 2026 Legion Builds
 using CoreJ2K.j2k.decoder;
 using CoreJ2K.j2k.image;
 using CoreJ2K.j2k.wavelet;
@@ -359,8 +361,8 @@ namespace CoreJ2K.j2k.wavelet.synthesis
                 {
 
                     case DataBlk.TYPE_FLOAT:
-                        var fwidth = GetFullTileCompWidth(tIdx, compIndex);
-                        var fheight = GetFullTileCompHeight(tIdx, compIndex);
+                        var fwidth = GetTileCompWidth(tIdx, compIndex);
+                        var fheight = GetTileCompHeight(tIdx, compIndex);
 
                         // Validate dimensions to prevent integer overflow
                         long fBufferSize = (long)fwidth * fheight;
@@ -392,7 +394,8 @@ namespace CoreJ2K.j2k.wavelet.synthesis
                         {
                             var rent = ArrayPool<float>.Shared.Rent((int)fBufferSize);
                             // Rent() may hand back a buffer holding a previous decode's samples, and code-blocks
-                            // that are skipped or truncated never write their area, so start from zero.
+                            // that are skipped or truncated never write their area, so start from zero. Only the
+                            // size of the level returned is cleared, not the full-resolution size.
                             Array.Clear(rent, 0, (int)fBufferSize);
                             reconstructedComps[compIndex].Data = rent;
                             rentedFloatBuffers[compIndex] = rent;
@@ -405,8 +408,8 @@ namespace CoreJ2K.j2k.wavelet.synthesis
                         break;
 
                     case DataBlk.TYPE_INT:
-                        var iwidth = GetFullTileCompWidth(tIdx, compIndex);
-                        var iheight = GetFullTileCompHeight(tIdx, compIndex);
+                        var iwidth = GetTileCompWidth(tIdx, compIndex);
+                        var iheight = GetTileCompHeight(tIdx, compIndex);
 
                         // Validate dimensions to prevent integer overflow
                         long iBufferSize = (long)iwidth * iheight;
@@ -1164,8 +1167,8 @@ namespace CoreJ2K.j2k.wavelet.synthesis
             // Ensure rented buffers are large enough for new tile; do not return them so they are reused
             for (i = 0; i < nc; i++)
             {
-                var newWidth = GetFullTileCompWidth(tIdx, i);
-                var newHeight = GetFullTileCompHeight(tIdx, i);
+                var newWidth = GetTileCompWidth(tIdx, i);
+                var newHeight = GetTileCompHeight(tIdx, i);
                 
                 // Validate dimensions to prevent integer overflow
                 long needed = (long)newWidth * newHeight;
@@ -1255,8 +1258,8 @@ namespace CoreJ2K.j2k.wavelet.synthesis
             // Ensure rented buffers are large enough for new tile; keep them for reuse
             for (i = 0; i < nc; i++)
             {
-                var newWidth = GetFullTileCompWidth(tIdx, i);
-                var newHeight = GetFullTileCompHeight(tIdx, i);
+                var newWidth = GetTileCompWidth(tIdx, i);
+                var newHeight = GetTileCompHeight(tIdx, i);
                 
                 // Validate dimensions to prevent integer overflow
                 long needed = (long)newWidth * newHeight;
